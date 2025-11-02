@@ -1,0 +1,7 @@
+example.com
+test.com
+demo.com
+sample.com
+api.example.com
+app.example.com
+admin.example.com

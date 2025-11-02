@@ -1,0 +1,30 @@
+VẤN ĐỀ:
+Tôi muốn tạo một trang web để quản lý việc chạy các tool scan trong folder tool, chia theo từng target domain, subdomain.
+Trang web có phần để quản lý domain, subdomain chọn thêm tab scan để config tool và chạy và hiển thị output realtime, xem kết quả, ...
+
+TECHNICAL
+frondend React + Vite + Tailwind CSS
+backend viết bằng python
+bạn có thể tự chọn thêm công nghệ để phù hợp với yêu cầu của tôi
+tạo file setup để có thể chạy trên docker của bất kỳ máy nào
+
+FUNCTION/SCREEN
+- giao diện logo ứng dụng (màn hình giới thiệu)
+- Login Function (popup form login trên giao diện logo ứng dụng khi nhấp vào nút login). TẤT CẢ CÁC CHỨC NĂNG BÊN TRONG PHẢI CÓ SESSION/TOKEN SAU KHI LOGIN MỚI CÓ THỂ SỬ DỤNG, NẾU KHÔNG CÓ SẼ CHUYỂN HƯỚNG VỀ TRANG BAN ĐẦU ĐỂ LOGIN
+- Giao diện web:
++ Bên trái là menu function: Dashboard, Target (hiển thị các target đã tạo, trạng thái (chưa bắt đầu, đang test, đã đóng target)), Scan (Hiển thị danh sách các scan đã và đang chạy mỗi item trong list bao gồm: target, tool, trạng thái, các lựa chọn xóa item, pause, stop, strart, re-start tiến trình scan), Logout
++ Bên phải là khung hiển thị giao diện function
+- Dashboard: (chưa nghĩ ra, bạn có thể nghĩ giúp tôi nên hiển thì gì chỗ này)
+- Target function: Phía trên sẽ có những button như: Fillter/Search, Tạo target, Tạo Wildcard, bên dưới là khung chính hiển thị danh sách các target(mỗi item là một target bao gồm: tên target, số lượng scan đang chạy đã hoàn thành trên target này, button new scan), khi nhấp vào 1 item sẽ sổ xuống list từng tool/tiến trình đã chạy và đang chạy xong. Từng item trong list sổ xuống sẽ hiển thị như bên funcion/screen Scan
+- New target: 
++ Tích vào Wildcard: sẽ cần điền tên Wildcard ví dụ *.example.com
++ Không tích Wildcard sẽ cho phép người dùng tạo 1 target mới bao gồm: domain/ip, port và nếu đó là subdomain thì sẽ chọn thuộc Wildcard nào (optional) nhằm group nhiều target là subdomain của một Wildcard. Nếu phần thuộc Wildcard nào mà không chọn thì target này sẽ đơn lẻ và không group
+- Khi nhấp vào item trong danh sách scan sẽ hiển thị chi tiết tiến trình đang scan bao gồm: lệnh đang chạy, tên tool. Bên dưới có giao diện chính của screen này bao gồm: 2 tab lựa chọn để hiển thị output tool trả về trên terminal realtime, và result lưu lại, các chức năng download result
+- Function/Screen Scan: liệt kê tất cả các item scan (không group như bên target), có nút để tạo và cấu hình new scan
++ Đây là chức năng chính quan trọng của ứng dụng web này, tôi muốn quản lý việc chạy nhiều tool khác nhau (tool có thể được viết bằng nhiều ngôn ngữ lập trình khác nhau), tool muốn quản lý việc cấu hình để chạy tool
++ trong khi tool chạy sẽ có in ra debug hoặc in tiến trình scan, tôi muốn nó hiện thị readtime trên web. Hiển thị kết quả output mà tool trả về (thường sau khi tool chạy xong sẽ có output kết quả ra một file)
++ Các tool khác nhau sẽ có các cờ đầu vào khác nhau để cấu hình tiến trình chạy tool để scan 1 target, hiện tại tôi đã xác định có các tool sau: subfinder, dirsearch, nuclei, có thể tương lai sẽ có những tool khác nên hãy thiết kế theo cách có thể mở rộng sau này
++ HÃY THIẾT KẾ ĐỂ CHO PHÙ HỢP VỚI NHU CẦU CỦA TÔI
+
+
+BẠN CÓ THỂ DÙNG THÊM, CHỈNH SỬA, THAY ĐỔI CÔNG NGHỆ ĐỂ PHÙ HỢP VỚI NHU CẦU ỨNG DỤNG CỦA TÔI VÀ CÓ THỂ MỞ RỘNG THÊM ỨNG DỤNG KHI CẦN THIẾT
