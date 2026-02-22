@@ -1,0 +1,16 @@
+# Custom Wordlist
+# Add your custom subdomains here, one per line
+# Examples:
+# internal
+# private
+# secret
+# hidden
+# backup
+# staging
+# development
+# testing
+# api-v1
+# api-v2
+# mobile-api
+# admin-panel
+# user-dashboard
