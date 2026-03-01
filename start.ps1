@@ -39,7 +39,7 @@ else {
     
     Write-Host ""
     Write-Host "✅ ScanPilot is starting up!" -ForegroundColor Green
-    Write-Host "📍 Frontend: http://localhost:5173" -ForegroundColor Cyan
+    Write-Host "📍 Frontend: http://localhost:3000" -ForegroundColor Cyan
     Write-Host "📍 Backend: http://localhost:8000" -ForegroundColor Cyan
     Write-Host "📖 API Docs: http://localhost:8000/docs" -ForegroundColor Cyan
     Write-Host ""

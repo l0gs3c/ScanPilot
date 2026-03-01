@@ -10,25 +10,18 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [theme, setTheme] = useState<Theme>('light'); // Default to light theme
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem('scanpilot-theme') as Theme;
+    return saved === 'dark' ? 'dark' : 'light';
+  });
 
   useEffect(() => {
-    // Load theme from localStorage
-    const savedTheme = localStorage.getItem('scanpilot-theme') as Theme;
-    if (savedTheme) {
-      setTheme(savedTheme);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Apply theme to document
+    // Apply theme to document - toggle .dark class on <html>
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-    
-    // Save theme to localStorage
     localStorage.setItem('scanpilot-theme', theme);
   }, [theme]);
 

@@ -29,7 +29,7 @@ def init_db() -> None:
     print("Initializing database...")
     
     # Import all models to ensure table creation
-    from app.models import User, Target
+    from app.models import User, Target, Scan
     
     # Create all tables
     Base.metadata.create_all(bind=engine)

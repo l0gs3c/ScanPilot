@@ -34,8 +34,8 @@ if not exist .env (
 REM Create necessary directories
 echo Creating directories...
 if not exist "backend\logs" mkdir "backend\logs"
-if not exist "backend\storage\scan_results" mkdir "backend\storage\scan_results"
-if not exist "backend\storage\uploads" mkdir "backend\storage\uploads"
+if not exist "storage\targets" mkdir "storage\targets"
+if not exist "storage\uploads" mkdir "storage\uploads"
 
 REM Pull required Docker images
 echo Pulling Docker images...

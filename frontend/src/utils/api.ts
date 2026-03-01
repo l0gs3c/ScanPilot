@@ -1,9 +1,22 @@
 // API configuration utility
-const getApiUrl = (): string => {
-  const host = import.meta.env.VITE_BACKEND_HOST || 'localhost';
-  const port = import.meta.env.VITE_BACKEND_PORT || '8002';
-  
-  return `http://${host}:${port}`;
+// Import from centralized config
+import { API_BASE_URL, API_URL } from '../config/api';
+
+/**
+ * Get the base API URL (without /api/v1 prefix)
+ * Example: http://localhost:8000
+ */
+export const getApiUrl = (): string => {
+  return API_BASE_URL;
 };
 
-export { getApiUrl };
+/**
+ * Get the full API URL (with /api/v1 prefix)
+ * Example: http://localhost:8000/api/v1
+ */
+export const getApiFullUrl = (): string => {
+  return API_URL;
+};
+
+// Legacy support - keep for backward compatibility
+export { API_BASE_URL, API_URL };

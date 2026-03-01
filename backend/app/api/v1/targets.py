@@ -1,453 +1,252 @@
-from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy.orm import Session
+"""
+Target API endpoints using file-based storage
+No database required - all data stored in JSON files
+"""
+from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-import json
 
-from ...database import get_db
-from ...crud import target as crud_target
 from ...schemas.target import (
     TargetCreate,
     TargetUpdate,
     TargetResponse,
     TargetListResponse
 )
-from ...models.target import Target
-from ...core.deps import get_current_user
-from ...models.user import User
+from ...utils.file_storage import TargetStorage, get_target_folder_name
 
 router = APIRouter()
 
+
 class TargetCreateRequest(BaseModel):
-    name: Optional[str] = None  # Changed to optional
-    domain: Optional[str] = None
+    """Request model for creating targets"""
+    name: str
+    domain: str
     port: Optional[str] = None
-    wildcardPattern: Optional[str] = None
-    parentWildcard: Optional[str] = None
     description: Optional[str] = None
-    isWildcard: bool = False
-    
-    def validate_fields(self):
-        """Custom validation for target creation"""
-        if not self.isWildcard and not self.domain:
-            raise ValueError("Domain is required for non-wildcard targets")
-        if self.isWildcard and not self.wildcardPattern:
-            raise ValueError("Wildcard pattern is required for wildcard targets")
-        return True
+
 
 @router.post("/", response_model=TargetResponse)
-def create_target(
-    target_data: TargetCreateRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
+def create_target(target_data: TargetCreateRequest):
     """
     Create new target.
+    Target data is stored as JSON file and a folder is created for scan results.
     """
     try:
-        print(f"[DEBUG] Raw request received")
-        print(f"[DEBUG] Request data: {target_data.model_dump()}")
+        print(f"[DEBUG] Creating target: {target_data.model_dump()}")
         
-        # Validate request data
-        target_data.validate_fields()
+        # Check if domain+port combination already exists
+        existing = TargetStorage.get_by_domain_and_port(target_data.domain, target_data.port)
+        if existing:
+            port_display = target_data.port if target_data.port else "80"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Target with domain '{target_data.domain}' and port '{port_display}' already exists"
+            )
         
-        # Auto-generate name if not provided
-        target_name = target_data.name
-        if not target_name:
-            if target_data.isWildcard and target_data.wildcardPattern:
-                target_name = target_data.wildcardPattern
-            elif target_data.domain:
-                target_name = target_data.domain
-            else:
-                target_name = "Unnamed Target"
+        # Create target
+        target = TargetStorage.create({
+            "name": target_data.name,
+            "domain": target_data.domain,
+            "port": target_data.port,
+            "description": target_data.description
+        })
         
-        # Create target directly without pydantic validation
-        from ...models.target import Target
+        # Generate targetUrl for display - always show port
+        if target["port"]:
+            target["targetUrl"] = f"{target['domain']}:{target['port']}"
+        else:
+            target["targetUrl"] = f"{target['domain']}:80"
         
-        target_obj = Target(
-            name=target_name,
-            domain=target_data.domain,
-            port=target_data.port,
-            wildcard_pattern=target_data.wildcardPattern,
-            parent_wildcard=target_data.parentWildcard,
-            description=target_data.description,
-            is_wildcard=target_data.isWildcard,
-            status="idle",
-            active_scans=0,
-            completed_scans=0
-        )
-        print(f"[DEBUG] Creating target with data: {target_obj.__dict__}")
+        print(f"[DEBUG] Target created successfully with ID: {target['id']}")
+        print(f"[DEBUG] Scan results folder: {target.get('folderName')}")
         
-        # For non-wildcard targets, check if domain already exists
-        if not target_obj.is_wildcard and target_obj.domain:
-            existing_domain = crud_target.get_by_domain(db, domain=target_obj.domain)
-            if existing_domain:
-                print(f"[DEBUG] Target with domain '{target_obj.domain}' already exists")
-                raise HTTPException(
-                    status_code=400,
-                    detail="Target with this domain already exists"
-                )
+        return TargetResponse(**target)
         
-        print(f"[DEBUG] Adding target to database...")
-        db.add(target_obj)
-        db.commit()
-        db.refresh(target_obj)
-        target = target_obj
-        print(f"[DEBUG] Target created successfully with ID: {target.id}")
-        
-        return TargetResponse(
-            id=target.id,
-            name=target.name,
-            domain=target.domain,
-            port=target.port,
-            wildcardPattern=target.wildcard_pattern,
-            parentWildcard=target.parent_wildcard,
-            description=target.description,
-            isWildcard=target.is_wildcard,
-            status=target.status,
-            activeScans=target.active_scans,
-            completedScans=target.completed_scans,
-            createdAt=target.created_at,
-            updatedAt=target.updated_at,
-            targetUrl=target.target_url
-        )
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Unexpected error creating target: {str(e)}")
-        print(f"[ERROR] Error type: {type(e)}")
+        print(f"[ERROR] Failed to create target: {str(e)}")
         import traceback
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=500,
-            detail=f"Internal server error: {str(e)}"
+            detail=f"Failed to create target: {str(e)}"
         )
+
 
 @router.get("/", response_model=TargetListResponse)
 def read_targets(
-    db: Session = Depends(get_db),
     skip: int = Query(0, ge=0, description="Number of targets to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Number of targets to return"),
     status: Optional[str] = Query(None, description="Filter by status"),
-    search: Optional[str] = Query(None, description="Search in name, domain, or wildcard pattern"),
-    order_by: str = Query("created_at", description="Field to order by"),
-    order_desc: bool = Query(True, description="Order descending"),
-    current_user: User = Depends(get_current_user)
+    search: Optional[str] = Query(None, description="Search in name or domain"),
+    order_by: str = Query("createdAt", description="Field to order by"),
+    order_desc: bool = Query(True, description="Order descending")
 ):
     """
-    Retrieve targets.
+    Retrieve targets from file storage.
     """
-    targets = crud_target.get_multi(
-        db, 
-        skip=skip, 
-        limit=limit,
-        status=status,
-        search=search,
-        order_by=order_by,
-        order_desc=order_desc,
-        include_children=False  # Only show top-level targets
-    )
-    
-    total = crud_target.count(
-        db,
-        status=status,
-        search=search,
-        include_children=False  # Only count top-level targets
-    )
-    
-    target_responses = []
-    for target in targets:
-        # Count children for wildcard targets
-        children_count = 0
-        if target.is_wildcard:
-            children_count = crud_target.count_children(db, parent_wildcard_id=target.id)
-        
-        target_responses.append(TargetResponse(
-            id=target.id,
-            name=target.name,
-            domain=target.domain,
-            port=target.port,
-            wildcardPattern=target.wildcard_pattern,
-            parentWildcard=target.parent_wildcard,
-            description=target.description,
-            isWildcard=target.is_wildcard,
-            status=target.status,
-            activeScans=target.active_scans,
-            completedScans=target.completed_scans,
-            createdAt=target.created_at,
-            updatedAt=target.updated_at,
-            targetUrl=target.target_url,
-            childrenCount=children_count
-        ))
-    
-    return TargetListResponse(
-        targets=target_responses,
-        total=total,
-        page=skip // limit + 1,
-        size=limit
-    )
-
-@router.get("/{target_id}/children", response_model=TargetListResponse)
-def get_target_children(
-    target_id: int,
-    db: Session = Depends(get_db),
-    skip: int = Query(0, ge=0, description="Number of targets to skip"),
-    limit: int = Query(100, ge=1, le=1000, description="Number of targets to return"),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Get children targets of a wildcard target.
-    """
-    print(f"[DEBUG] Getting children for target_id: {target_id}")
-    
-    # First verify the parent target exists and is a wildcard
-    parent_target = crud_target.get(db, id=target_id)
-    if not parent_target:
-        raise HTTPException(status_code=404, detail="Target not found")
-    
-    if not parent_target.is_wildcard:
-        raise HTTPException(status_code=400, detail="Target is not a wildcard target")
-    
-    # Get children targets - query by parent_wildcard = target_id (as string)
-    children = db.query(Target).filter(
-        Target.parent_wildcard == str(target_id)
-    ).offset(skip).limit(limit).all()
-    
-    print(f"[DEBUG] Found {len(children)} children for target {target_id}")
-    for child in children:
-        print(f"[DEBUG] Child: {child.id}, {child.name}, {child.domain}, parent_wildcard: '{child.parent_wildcard}'")
-    
-    total = db.query(Target).filter(
-        Target.parent_wildcard == str(target_id)
-    ).count()
-    
-    print(f"[DEBUG] Total children count: {total}")
-    
-    target_responses = []
-    for target in children:
-        target_responses.append(TargetResponse(
-            id=target.id,
-            name=target.name,
-            domain=target.domain,
-            port=target.port,
-            wildcardPattern=target.wildcard_pattern,
-            parentWildcard=target.parent_wildcard,
-            description=target.description,
-            isWildcard=target.is_wildcard,
-            status=target.status,
-            activeScans=target.active_scans,
-            completedScans=target.completed_scans,
-            createdAt=target.created_at,
-            updatedAt=target.updated_at,
-            targetUrl=target.target_url
-        ))
-    
-    return TargetListResponse(
-        targets=target_responses,
-        total=total,
-        page=skip // limit + 1,
-        size=len(target_responses)
-    )
-
-@router.get("/test-scannable")
-def test_scannable():
-    """Test endpoint without authentication"""
-    print("[DEBUG] Test scannable endpoint called!")
-    return {"message": "Test scannable works", "status": "ok"}
-
-@router.get("/scannable")
-def get_scannable_targets(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Get all targets that can be scanned (excludes wildcards, includes sub-targets).
-    This endpoint is specifically for the scan creation modal.
-    """
-    print(f"[DEBUG] Getting scannable targets for user: {current_user.username}")
-    print(f"[DEBUG] User ID: {current_user.id}, User role: {getattr(current_user, 'role', 'unknown')}")
-    
     try:
-        # Get all non-wildcard targets (both standalone and sub-targets of wildcards)
-        targets = db.query(Target).filter(
-            Target.is_wildcard == False  # Only non-wildcard targets
-        ).order_by(Target.created_at.desc()).all()
+        # Get targets
+        targets = TargetStorage.get_all(
+            skip=skip,
+            limit=limit,
+            status=status,
+            search=search
+        )
         
-        print(f"[DEBUG] Found {len(targets)} scannable targets")
+        # Get total count
+        total = TargetStorage.count(status=status, search=search)
         
-        # Return simple format first
-        simple_targets = []
+        # Add targetUrl to each target - always show port
+        target_responses = []
         for target in targets:
-            simple_targets.append({
-                "id": target.id,
-                "name": target.name,
-                "domain": target.domain,
-                "isWildcard": target.is_wildcard,
-                "status": target.status
-            })
+            if target.get("port"):
+                target["targetUrl"] = f"{target['domain']}:{target['port']}"
+            else:
+                target["targetUrl"] = f"{target['domain']}:80"
+            
+            target_responses.append(TargetResponse(**target))
         
-        return {"targets": simple_targets, "count": len(simple_targets)}
+        return TargetListResponse(
+            targets=target_responses,
+            total=total,
+            page=skip // limit + 1,
+            size=limit
+        )
         
     except Exception as e:
-        print(f"[ERROR] Error in scannable endpoint: {str(e)}")
-        import traceback
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
-        return {"error": str(e), "targets": [], "count": 0}
+        print(f"[ERROR] Failed to retrieve targets: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve targets: {str(e)}"
+        )
+
 
 @router.get("/{target_id}", response_model=TargetResponse)
-def read_target(
-    *,
-    db: Session = Depends(get_db),
-    target_id: int,
-    current_user: User = Depends(get_current_user)
-):
+def read_target(target_id: int):
     """
     Get target by ID.
     """
-    target = crud_target.get(db, id=target_id)
+    target = TargetStorage.get(target_id)
     if not target:
-        raise HTTPException(status_code=404, detail="Target not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Target with ID {target_id} not found"
+        )
     
-    return TargetResponse(
-        id=target.id,
-        name=target.name,
-        domain=target.domain,
-        port=target.port,
-        wildcardPattern=target.wildcard_pattern,
-        parentWildcard=target.parent_wildcard,
-        description=target.description,
-        isWildcard=target.is_wildcard,
-        status=target.status,
-        activeScans=target.active_scans,
-        completedScans=target.completed_scans,
-        createdAt=target.created_at,
-        updatedAt=target.updated_at,
-        targetUrl=target.target_url
-    )
+    # Add targetUrl - always show port
+    if target.get("port"):
+        target["targetUrl"] = f"{target['domain']}:{target['port']}"
+    else:
+        target["targetUrl"] = f"{target['domain']}:80"
+    
+    return TargetResponse(**target)
+
 
 @router.put("/{target_id}", response_model=TargetResponse)
-def update_target(
-    *,
-    db: Session = Depends(get_db),
-    target_id: int,
-    target_in: TargetUpdate,
-    current_user: User = Depends(get_current_user)
-):
+def update_target(target_id: int, target_update: TargetUpdate):
     """
     Update target.
     """
-    target = crud_target.get(db, id=target_id)
-    if not target:
-        raise HTTPException(status_code=404, detail="Target not found")
+    # Check if target exists
+    existing = TargetStorage.get(target_id)
+    if not existing:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Target with ID {target_id} not found"
+        )
     
-    # Names can be duplicate - no uniqueness check needed
-    
-    # Check domain uniqueness if being updated (only for non-wildcard targets)
-    if target_in.domain and target_in.domain != target.domain and not target.is_wildcard:
-        existing_domain = crud_target.get_by_domain(db, domain=target_in.domain)
-        if existing_domain:
+    try:
+        # Get update data
+        update_data = target_update.model_dump(exclude_unset=True)
+        
+        # Check if domain or port is being updated
+        new_domain = update_data.get("domain", existing.get("domain"))
+        new_port = update_data.get("port", existing.get("port"))
+        
+        # Check for duplicate domain+port combination (excluding current target)
+        if new_domain != existing.get("domain") or new_port != existing.get("port"):
+            duplicate = TargetStorage.get_by_domain_and_port(new_domain, new_port)
+            if duplicate and duplicate.get("id") != target_id:
+                port_display = new_port if new_port else "80"
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Target with domain '{new_domain}' and port '{port_display}' already exists"
+                )
+        
+        # Update target
+        updated_target = TargetStorage.update(target_id, update_data)
+        
+        if not updated_target:
             raise HTTPException(
-                status_code=400,
-                detail="Target with this domain already exists"
+                status_code=500,
+                detail="Failed to update target"
             )
-    
-    target = crud_target.update(db, db_obj=target, obj_in=target_in)
-    
-    return TargetResponse(
-        id=target.id,
-        name=target.name,
-        domain=target.domain,
-        port=target.port,
-        wildcardPattern=target.wildcard_pattern,
-        parentWildcard=target.parent_wildcard,
-        description=target.description,
-        isWildcard=target.is_wildcard,
-        status=target.status,
-        activeScans=target.active_scans,
-        completedScans=target.completed_scans,
-        createdAt=target.created_at,
-        updatedAt=target.updated_at,
-        targetUrl=target.target_url
-    )
+        
+        # Add targetUrl - always show port
+        if updated_target.get("port"):
+            updated_target["targetUrl"] = f"{updated_target['domain']}:{updated_target['port']}"
+        else:
+            updated_target["targetUrl"] = f"{updated_target['domain']}:80"
+        
+        return TargetResponse(**updated_target)
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to update target: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update target: {str(e)}"
+        )
+
 
 @router.delete("/{target_id}")
-def delete_target(
-    *,
-    db: Session = Depends(get_db),
-    target_id: int,
-    current_user: User = Depends(get_current_user)
-):
+def delete_target(target_id: int):
     """
     Delete target.
+    Note: Scan results are preserved even after deleting the target.
     """
-    target = crud_target.get(db, id=target_id)
+    target = TargetStorage.get(target_id)
     if not target:
-        raise HTTPException(status_code=404, detail="Target not found")
-    
-    # Check if target has active scans
-    if target.active_scans > 0:
         raise HTTPException(
-            status_code=400,
-            detail="Cannot delete target with active scans"
+            status_code=404,
+            detail=f"Target with ID {target_id} not found"
         )
     
-    crud_target.delete(db, id=target_id)
-    return {"message": "Target deleted successfully"}
-
-@router.patch("/{target_id}/status")
-def update_target_status(
-    *,
-    db: Session = Depends(get_db),
-    target_id: int,
-    status: str,
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Update target status.
-    """
-    valid_statuses = ["idle", "scanning", "completed", "error"]
-    if status not in valid_statuses:
+    success = TargetStorage.delete(target_id)
+    if not success:
         raise HTTPException(
-            status_code=400,
-            detail=f"Invalid status. Must be one of: {valid_statuses}"
+            status_code=500,
+            detail="Failed to delete target"
         )
     
-    target = crud_target.update_status(db, id=target_id, status=status)
-    if not target:
-        raise HTTPException(status_code=404, detail="Target not found")
-    
-    return {"message": f"Target status updated to {status}"}
+    return {"message": f"Target {target_id} deleted successfully"}
 
-@router.get("/wildcards/list", response_model=List[TargetResponse])
-def get_wildcard_targets(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
+
+@router.get("/scannable/list", response_model=List[TargetResponse])
+def get_scannable_targets():
     """
-    Get all wildcard targets for parent selection.
+    Get all targets available for scanning.
+    Since we removed wildcards, all targets are scannable.
     """
-    targets = crud_target.get_wildcard_targets(db)
-    
-    target_responses = []
-    for target in targets:
-        target_responses.append(TargetResponse(
-            id=target.id,
-            name=target.name,
-            domain=target.domain,
-            port=target.port,
-            wildcardPattern=target.wildcard_pattern,
-            parentWildcard=target.parent_wildcard,
-            description=target.description,
-            isWildcard=target.is_wildcard,
-            status=target.status,
-            activeScans=target.active_scans,
-            completedScans=target.completed_scans,
-            createdAt=target.created_at,
-            updatedAt=target.updated_at,
-            targetUrl=target.target_url
-        ))
-    
-    return target_responses
-
-
-    
+    try:
+        targets = TargetStorage.get_all(limit=1000)
+        
+        target_responses = []
+        for target in targets:
+            # Always show port in targetUrl
+            if target.get("port"):
+                target["targetUrl"] = f"{target['domain']}:{target['port']}"
+            else:
+                target["targetUrl"] = f"{target['domain']}:80"
+            
+            target_responses.append(TargetResponse(**target))
+        
+        return target_responses
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to get scannable targets: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get scannable targets: {str(e)}"
+        )

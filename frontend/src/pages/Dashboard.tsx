@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
+import { API_URL } from '../config/api'
 
 interface Target {
   id: string
@@ -33,8 +34,6 @@ interface DashboardStats {
   user: string
 }
 
-const API_BASE = 'http://localhost:8000'
-
 export default function Dashboard() {
   const { user, logout } = useAuth()
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -53,9 +52,9 @@ export default function Dashboard() {
       setError(null)
 
       const [statsRes, targetsRes, scansRes] = await Promise.all([
-        axios.get(`${API_BASE}/api/v1/dashboard/stats`),
-        axios.get(`${API_BASE}/api/v1/targets`),
-        axios.get(`${API_BASE}/api/v1/scans`)
+        axios.get(`${API_URL}/dashboard/stats`),
+        axios.get(`${API_URL}/targets`),
+        axios.get(`${API_URL}/scans`)
       ])
 
       setStats(statsRes.data)
@@ -290,6 +289,82 @@ export default function Dashboard() {
 
         .logout-error-button:hover {
           background: rgba(220, 38, 38, 0.1);
+        }
+
+        /* Dark Mode Styles */
+        :global(.dark) .dashboard {
+          background: var(--bg-secondary);
+        }
+
+        :global(.dark) .page-title {
+          color: var(--text-primary);
+        }
+
+        :global(.dark) .page-description {
+          color: var(--text-secondary);
+        }
+
+        :global(.dark) .stat-card {
+          background: var(--bg-primary);
+          border-color: var(--border-color);
+        }
+
+        :global(.dark) .stat-number {
+          color: var(--accent-color);
+        }
+
+        :global(.dark) .stat-label {
+          color: var(--text-secondary);
+        }
+
+        :global(.dark) .section {
+          background: var(--bg-primary);
+          border-color: var(--border-color);
+        }
+
+        :global(.dark) .section h2 {
+          color: var(--text-primary);
+          border-bottom-color: var(--accent-color);
+        }
+
+        :global(.dark) .item-card {
+          background: var(--bg-primary);
+          border-color: var(--border-color);
+        }
+
+        :global(.dark) .item-card:hover {
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        :global(.dark) .item-title {
+          color: var(--text-primary);
+        }
+
+        :global(.dark) .item-details {
+          color: var(--text-secondary);
+        }
+
+        :global(.dark) .loading-message {
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+
+        :global(.dark) .error-message {
+          background: var(--error-bg);
+          color: var(--error-text);
+          border-color: #991b1b;
+        }
+
+        :global(.dark) .retry-button,
+        :global(.dark) .logout-error-button {
+          color: var(--error-text);
+          border-color: #991b1b;
+        }
+
+        :global(.dark) .retry-button:hover,
+        :global(.dark) .logout-error-button:hover {
+          background: rgba(127, 29, 29, 0.3);
         }
 
         @media (max-width: 768px) {

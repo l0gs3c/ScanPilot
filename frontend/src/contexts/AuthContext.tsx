@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import axios from 'axios'
+import { API_URL } from '../config/api'
 
 interface User {
   user_id: number
@@ -22,8 +23,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 interface AuthProviderProps {
   children: ReactNode
 }
-
-const API_BASE = 'http://localhost:8000'
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null)
@@ -53,7 +52,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const verifyToken = async (token: string) => {
     try {
-      const response = await axios.get(`${API_BASE}/api/v1/auth/me`, {
+      const response = await axios.get(`${API_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       setUser(response.data)
@@ -71,7 +70,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
       setLoading(true)
-      const response = await axios.post(`${API_BASE}/api/v1/auth/login`, {
+      const response = await axios.post(`${API_URL}/auth/login`, {
         username,
         password
       })
@@ -107,7 +106,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       // Call logout endpoint if token exists
       if (token) {
-        await axios.post(`${API_BASE}/api/v1/auth/logout`)
+        await axios.post(`${API_URL}/auth/logout`)
       }
     } catch (error) {
       console.error('Logout API call failed:', error)

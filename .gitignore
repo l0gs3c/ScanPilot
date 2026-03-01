@@ -107,10 +107,9 @@ jspm_packages/
 # Backend specific
 backend/logs/*
 !backend/logs/.gitkeep
-backend/storage/scan_results/*
-!backend/storage/scan_results/.gitkeep
-backend/storage/uploads/*
-!backend/storage/uploads/.gitkeep
+storage/targets/*/
+storage/uploads/*
+!storage/uploads/.gitkeep
 *.sqlite
 *.db
 

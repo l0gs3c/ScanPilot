@@ -32,8 +32,8 @@ fi
 # Create necessary directories
 echo "Creating directories..."
 mkdir -p backend/logs
-mkdir -p backend/storage/scan_results
-mkdir -p backend/storage/uploads
+mkdir -p storage/targets
+mkdir -p storage/uploads
 
 # Pull required Docker images
 echo "Pulling Docker images..."

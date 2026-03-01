@@ -24,41 +24,229 @@ ScanPilot implements JWT-based authentication with secure routing protection. Al
 
 #### JWT Token System
 ```python
-# Research: mcp_context7_get-library-docs --library "/auth0/node-jsonwebtoken" --topic "jwt security"
+# Research: mcp_context7_get-library-docs --library "/fastapi/fastapi" --topic "jwt authentication security"
+# Context7 provides latest JWT security patterns from FastAPI documentation
 
-SECRET_KEY = "your-secret-key-change-this-in-production"
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+from jose import jwt, JWTError
+from passlib.context import CryptContext
+
+# Security Configuration
+SECRET_KEY = "your-secret-key-change-this-in-production"  # Generate with: openssl rand -hex 32
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours
 
-def create_access_token(data: dict):
+# Password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """
+    Generate JWT access token with expiration
+    
+    Based on Context7 documentation:
+    - Uses HS256 algorithm for signing
+    - Includes 'sub' (subject) claim for username
+    - Adds 'exp' (expiration) claim automatically
+    - Returns encoded JWT string
+    """
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify password against hash using bcrypt"""
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password: str) -> str:
+    """Hash password using bcrypt"""
+    return pwd_context.hash(password)
 ```
+
+**Security Best Practices** (từ Context7):
+1. ✅ Sử dụng `openssl rand -hex 32` để tạo SECRET_KEY
+2. ✅ Token expiration để giới hạn thời gian sống
+3. ✅ HS256 algorithm cho production
+4. ✅ Bcrypt cho password hashing với cost factor phù hợp
 
 #### Protected Endpoints
 All API endpoints require Bearer token:
 ```python
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import jwt, JWTError
+from pydantic import BaseModel
+
+# OAuth2 scheme - tokenUrl points to login endpoint
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
+
+class TokenData(BaseModel):
+    username: str | None = None
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    """
+    Dependency to validate JWT token and return current user
+    
+    Context7 Pattern:
+    - Extracts token from Authorization header automatically
+    - Validates token signature and expiration
+    - Returns 401 if invalid
+    - Includes WWW-Authenticate header for OAuth2 compliance
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
     try:
-        token = credentials.credentials
+        # Decode and verify JWT token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
-        user = get_user(username=username)
-        return user
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        if username is None:
+            raise credentials_exception
+            
+        token_data = TokenData(username=username)
+    except JWTError:
+        raise credentials_exception
+    
+    # Get user from database
+    user = get_user(username=token_data.username)
+    if user is None:
+        raise credentials_exception
+    
+    return user
+
+async def get_current_active_user(current_user = Depends(get_current_user)):
+    """Additional check for user status"""
+    if not current_user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return current_user
+
+# Usage in protected endpoints
+@app.get("/api/v1/users/me")
+async def read_users_me(current_user = Depends(get_current_active_user)):
+    return current_user
 ```
+
+**Error Responses** (theo FastAPI standard):
+- `401 Unauthorized` - Token invalid hoặc expired
+- `400 Bad Request` - User inactive
+- `403 Forbidden` - Insufficient permissions
 
 ### Frontend Authentication (React)
 
 #### Authentication Context
 ```typescript
-// Research: mcp_context7_get-library-docs --library "/facebook/react" --topic "context authentication"
+// Research: mcp_context7_get-library-docs --library "/websites/react_dev" --topic "context authentication"
+// Context7 provides modern React patterns for authentication state management
 
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+
+interface User {
+  username: string
+  email?: string
+  is_active: boolean
+}
+
+interface AuthContextType {
+  user: User | null
+  isAuthenticated: boolean
+  loading: boolean
+  login: (username: string, password: string) => Promise<void>
+  logout: () => void
+}
+
+// Create context with default value
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  
+  const isAuthenticated = user !== null
+  
+  // Check authentication status on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = localStorage.getItem('access_token')
+      if (token) {
+        try {
+          // Verify token with backend
+          const response = await fetch('/api/v1/users/me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          
+          if (response.ok) {
+            const userData = await response.json()
+            setUser(userData)
+          } else {
+            // Token invalid, clear storage
+            localStorage.removeItem('access_token')
+          }
+        } catch (error) {
+          console.error('Auth check failed:', error)
+          localStorage.removeItem('access_token')
+        }
+      }
+      setLoading(false)
+    }
+    
+    checkAuth()
+  }, [])
+  
+  const login = async (username: string, password: string) => {
+    try {
+      const response = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      })
+      
+      if (!response.ok) {
+        throw new Error('Login failed')
+      }
+      
+      const data = await response.json()
+      
+      // Store token in localStorage
+      localStorage.setItem('access_token', data.access_token)
+      
+      // Get user info
+      const userResponse = await fetch('/api/v1/users/me', {
+        headers: { 'Authorization': `Bearer ${data.access_token}` }
+      })
+      
+      if (userResponse.ok) {
+        const userData = await userResponse.json()
+        setUser(userData)
+      }
+    } catch (error) {
+      console.error('Login error:', error)
+      throw error
+    }
+  }
+  
+  const logout = () => {
+    localStorage.removeItem('access_token')
+    setUser(null)
+  }
+  
+  return (
+    <AuthContext.Provider value={{ user, isAuthenticated, loading, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+// Custom hook for using auth context
 export function useAuth() {
   const context = useContext(AuthContext)
   if (!context) {
@@ -67,6 +255,13 @@ export function useAuth() {
   return context
 }
 ```
+
+**React Patterns** (từ Context7):
+1. ✅ Context API cho global state
+2. ✅ Custom hooks cho reusability
+3. ✅ useEffect cho side effects
+4. ✅ localStorage persistence
+5. ✅ Loading states cho UX
 
 #### Protected Routes
 ```typescript

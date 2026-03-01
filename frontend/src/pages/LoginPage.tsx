@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getApiUrl } from '../utils/api';
+import { API_URL } from '../config/api';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -16,8 +16,15 @@ const LoginPage: React.FC = () => {
     e.preventDefault();
     setIsLoading(true);
 
+    console.log('🔑 Login attempt started');
+    console.log('🎯 API_URL:', API_URL);
+    console.log('👤 Username:', username);
+
     try {
-      const response = await fetch(`${getApiUrl()}/api/v1/auth/login`, {
+      const loginUrl = `${API_URL}/auth/login`;
+      console.log('🚀 Sending request to:', loginUrl);
+      
+      const response = await fetch(loginUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -28,8 +35,13 @@ const LoginPage: React.FC = () => {
         }),
       });
 
+      console.log('📦 Response status:', response.status);
+      console.log('📦 Response ok:', response.ok);
+
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Login successful, data:', data);
+        
         const user = {
           id: data.user_id?.toString() || '1',
           username: data.username || username,
@@ -38,18 +50,25 @@ const LoginPage: React.FC = () => {
         };
         
         login(data.access_token, user);
-        console.log('Login successful:', user);
+        console.log('✅ User logged in, navigating to dashboard...');
         
         // Navigate to dashboard after successful login
         navigate('/dashboard', { replace: true });
       } else {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        console.error('❌ Login failed:', response.status, errorData);
         alert(errorData.detail || 'Invalid credentials!');
       }
     } catch (error) {
-      console.error('Login error:', error);
-      alert('Login failed! Please check your connection.');
+      console.error('🛑 Login error (network/CORS?):', error);
+      console.error('Error details:', {
+        name: (error as Error).name,
+        message: (error as Error).message,
+        stack: (error as Error).stack,
+      });
+      alert('Login failed! Please check:\n- Backend server is running\n- CORS configuration\n- Network connection');
     } finally {
+      console.log('🏁 Login attempt finished');
       setIsLoading(false);
     }
   };

@@ -39,72 +39,73 @@ const ScansPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Mock data for development
+  // Fetch scans from API
   useEffect(() => {
-    const mockScans: Scan[] = [
-      {
-        id: 1,
-        name: 'Subfinder Scan - example.com',
-        targetId: 1,
-        targetName: 'example.com',
-        targetDomain: 'example.com',
-        tool: 'subfinder',
-        status: 'running',
-        command: 'subfinder -d example.com -o output.txt',
-        progress: 45,
-        startedAt: '2024-11-02T10:30:00Z',
-        createdAt: '2024-11-02T10:30:00Z',
-        updatedAt: '2024-11-02T10:30:00Z'
-      },
-      {
-        id: 2,
-        name: 'Directory Scan - api.example.com',
-        targetId: 2,
-        targetName: 'api.example.com',
-        targetDomain: 'api.example.com',
-        tool: 'dirsearch',
-        status: 'completed',
-        command: 'dirsearch -u https://api.example.com -e php,html,js',
-        progress: 100,
-        startedAt: '2024-11-02T09:15:00Z',
-        completedAt: '2024-11-02T09:45:00Z',
-        duration: '30m 15s',
-        outputFile: 'dirsearch_api_example_com_2024-11-02_09-45.txt',
-        createdAt: '2024-11-02T09:15:00Z',
-        updatedAt: '2024-11-02T09:45:00Z'
-      },
-      {
-        id: 3,
-        name: 'Nuclei Vulnerability Scan',
-        targetId: 1,
-        targetName: 'example.com',
-        targetDomain: 'example.com',
-        tool: 'nuclei',
-        status: 'paused',
-        command: 'nuclei -u https://example.com -t cves/ -o nuclei_results.txt',
-        progress: 65,
-        startedAt: '2024-11-02T08:00:00Z',
-        createdAt: '2024-11-02T08:00:00Z',
-        updatedAt: '2024-11-02T08:30:00Z'
-      },
-      {
-        id: 4,
-        name: 'Failed Dirsearch Scan',
-        targetId: 3,
-        targetName: 'test.com',
-        targetDomain: 'test.com',
-        tool: 'dirsearch',
-        status: 'error',
-        command: 'dirsearch -u https://test.com',
-        progress: 0,
-        startedAt: '2024-11-02T07:30:00Z',
-        errorMessage: 'Connection timeout - target unreachable',
-        createdAt: '2024-11-02T07:30:00Z',
-        updatedAt: '2024-11-02T07:35:00Z'
-      }
-    ];
-    setScans(mockScans);
+    fetchScans();
   }, []);
+
+  const fetchScans = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:8000/api/v1/scans/', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch scans: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      // API returns { value: [...], count: number }
+      setScans(data.value || []);
+    } catch (err) {
+      console.error('Error fetching scans:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load scans');
+      setScans([]); // Set empty array on error
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle creating a new scan
+  const handleCreateScan = async (scanData: any) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:8000/api/v1/scans/', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(scanData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create scan');
+      }
+
+      const result = await response.json();
+      console.log('Scan created:', result);
+      
+      // Refresh scans list
+      await fetchScans();
+      
+      // Close modal
+      setIsAddModalOpen(false);
+      
+      // Show success message (optional)
+      alert(`Scan created successfully! ID: ${result.scan_id}`);
+    } catch (err) {
+      console.error('Error creating scan:', err);
+      alert(err instanceof Error ? err.message : 'Failed to create scan');
+    }  
+  };
 
   // Filter scans based on search term and filters
   const filteredScans = scans.filter(scan => {
@@ -211,34 +212,32 @@ const ScansPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Sticky Header */}
-      <div className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 pb-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Scans Management</h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">Monitor and control your security scans</p>
-          </div>
-          
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              <span>New Scan</span>
-            </button>
-          </div>
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Scans Management</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Monitor and control your security scans</p>
         </div>
+        
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 text-sm font-medium shadow-sm"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+          <span>New Scan</span>
+        </button>
+      </div>
+
+      <div>
 
         {/* Filters and Search */}
-        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-3 lg:space-y-0 lg:space-x-4">
+        <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <div className="flex items-center space-x-3">
             {/* Search */}
-            <div className="flex-1 max-w-md">
+            <div className="flex-1 max-w-xs">
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -249,20 +248,20 @@ const ScansPage: React.FC = () => {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   disabled={isLoading}
-                  className="pl-10 pr-4 py-2 w-full border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+                  className="pl-9 pr-3 py-1.5 w-full text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400"
                 />
               </div>
             </div>
 
             {/* Filters */}
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Status:</span>
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-1.5">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Status:</span>
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
                   disabled={isLoading}
-                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 >
                   <option value="all">All</option>
                   <option value="pending">Pending</option>
@@ -274,13 +273,13 @@ const ScansPage: React.FC = () => {
                 </select>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Tool:</span>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Tool:</span>
                 <select
                   value={filterTool}
                   onChange={(e) => setFilterTool(e.target.value)}
                   disabled={isLoading}
-                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 >
                   <option value="all">All Tools</option>
                   <option value="subfinder">Subfinder</option>
@@ -314,177 +313,454 @@ const ScansPage: React.FC = () => {
         </div>
       )}
 
-      {/* Scans List */}
+      {/* Scans Table */}
       {!isLoading && (
-        <div className="space-y-4">
+        <>
           {filteredScans.length === 0 ? (
-            <div className="text-center py-12">
-              <svg className="w-12 h-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div style={{ textAlign: 'center', padding: '48px 0' }}>
+              <svg style={{ width: 48, height: 48, margin: '0 auto 16px', color: '#9ca3af' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No scans found</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
+              <h3 style={{ fontSize: '18px', fontWeight: 500, marginBottom: '8px' }}>No scans found</h3>
+              <p style={{ color: '#9ca3af', marginBottom: '24px' }}>
                 {searchTerm || filterStatus !== 'all' || filterTool !== 'all' 
                   ? "No scans match your current filters." 
                   : "Get started by creating your first scan."}
               </p>
               <button
                 onClick={() => setIsAddModalOpen(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                style={{ background: '#2563eb', color: 'white', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer' }}
               >
                 Create New Scan
               </button>
             </div>
           ) : (
-            filteredScans.map((scan) => (
-              <div
-                key={scan.id}
-                className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6"
-              >
-                <div className="flex items-start justify-between">
-                  {/* Scan Info */}
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-3">
-                      {getToolIcon(scan.tool)}
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        {scan.name}
-                      </h3>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(scan.status)}`}>
-                        <div className="flex items-center space-x-1">
-                          {getStatusIcon(scan.status)}
-                          <span className="capitalize">{scan.status}</span>
-                        </div>
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-gray-600 dark:text-gray-400">
-                      <div>
-                        <span className="font-medium text-gray-900 dark:text-white">Target:</span>
-                        <br />
-                        {scan.targetDomain}
-                      </div>
-                      <div>
-                        <span className="font-medium text-gray-900 dark:text-white">Tool:</span>
-                        <br />
-                        <span className="capitalize">{scan.tool}</span>
-                      </div>
-                      <div>
-                        <span className="font-medium text-gray-900 dark:text-white">Duration:</span>
-                        <br />
-                        {scan.status === 'completed' ? scan.duration : formatDuration(scan.startedAt)}
-                      </div>
-                      <div>
-                        <span className="font-medium text-gray-900 dark:text-white">Progress:</span>
-                        <br />
-                        <div className="flex items-center space-x-2 mt-1">
-                          <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                            <div
-                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                              style={{ width: `${scan.progress}%` }}
-                            ></div>
-                          </div>
-                          <span className="text-xs font-medium">{scan.progress}%</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Command */}
-                    <div className="mt-4">
-                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Command</span>
-                      <div className="mt-1 bg-gray-100 dark:bg-gray-700 p-2 rounded text-sm font-mono text-gray-800 dark:text-gray-200">
-                        {scan.command}
-                      </div>
-                    </div>
-
-                    {/* Error Message */}
-                    {scan.errorMessage && (
-                      <div className="mt-4">
-                        <span className="text-xs font-medium text-red-500 uppercase tracking-wide">Error</span>
-                        <div className="mt-1 bg-red-50 dark:bg-red-900/20 p-2 rounded text-sm text-red-700 dark:text-red-400">
-                          {scan.errorMessage}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex flex-col space-y-2 ml-6">
-                    <button
-                      onClick={() => handleViewDetails(scan)}
-                      className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-3 py-1 rounded text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                    >
-                      View Details
-                    </button>
-
-                    {/* Control Buttons */}
-                    <div className="flex flex-col space-y-1">
-                      {scan.status === 'running' && (
-                        <>
-                          <button
-                            onClick={() => handleScanAction(scan.id, 'pause')}
-                            className="bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 px-3 py-1 rounded text-sm hover:bg-yellow-200 dark:hover:bg-yellow-900/40 transition-colors"
-                          >
-                            Pause
-                          </button>
-                          <button
-                            onClick={() => handleScanAction(scan.id, 'stop')}
-                            className="bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 px-3 py-1 rounded text-sm hover:bg-red-200 dark:hover:bg-red-900/40 transition-colors"
-                          >
-                            Stop
-                          </button>
-                        </>
-                      )}
-
-                      {scan.status === 'paused' && (
-                        <>
-                          <button
-                            onClick={() => handleScanAction(scan.id, 'start')}
-                            className="bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 px-3 py-1 rounded text-sm hover:bg-green-200 dark:hover:bg-green-900/40 transition-colors"
-                          >
-                            Resume
-                          </button>
-                          <button
-                            onClick={() => handleScanAction(scan.id, 'stop')}
-                            className="bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 px-3 py-1 rounded text-sm hover:bg-red-200 dark:hover:bg-red-900/40 transition-colors"
-                          >
-                            Stop
-                          </button>
-                        </>
-                      )}
-
-                      {(scan.status === 'completed' || scan.status === 'stopped' || scan.status === 'error') && (
-                        <button
-                          onClick={() => handleScanAction(scan.id, 'restart')}
-                          className="bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 px-3 py-1 rounded text-sm hover:bg-blue-200 dark:hover:bg-blue-900/40 transition-colors"
-                        >
-                          Restart
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => handleScanAction(scan.id, 'delete')}
-                        className="bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 px-3 py-1 rounded text-sm hover:bg-red-200 dark:hover:bg-red-900/40 transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
+            <div className="scans-table">
+              <div className="scans-table-header">
+                <div className="scans-table-row">
+                  <div className="scans-cell scans-header-cell">Name</div>
+                  <div className="scans-cell scans-header-cell">Target</div>
+                  <div className="scans-cell scans-header-cell">Tool</div>
+                  <div className="scans-cell scans-header-cell">Status</div>
+                  <div className="scans-cell scans-header-cell">Duration</div>
+                  <div className="scans-cell scans-header-cell">Progress</div>
+                  <div className="scans-cell scans-header-cell">Actions</div>
                 </div>
               </div>
-            ))
+              <div className="scans-table-body">
+                {filteredScans.map((scan) => (
+                  <div key={scan.id} className="scans-table-row">
+                    <div className="scans-cell">
+                      <div className="scan-name-cell">
+                        <span className="scan-name-icon">{getToolIcon(scan.tool)}</span>
+                        <div className="scan-name-text">
+                          <span className="scan-name-title">{scan.name}</span>
+                          {scan.command && (
+                            <span className="scan-name-cmd" title={scan.command}>{scan.command}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="scans-cell">
+                      <span className="scan-target-link" title={scan.targetDomain}>
+                        🔗 {scan.targetDomain}
+                      </span>
+                    </div>
+                    <div className="scans-cell">
+                      <span className={`scan-tool-badge scan-tool-${scan.tool}`}>{scan.tool}</span>
+                    </div>
+                    <div className="scans-cell">
+                      <span className={`scan-status-badge scan-status-${scan.status}`}>
+                        {getStatusIcon(scan.status)}
+                        <span style={{ textTransform: 'uppercase' }}>{scan.status}</span>
+                      </span>
+                    </div>
+                    <div className="scans-cell">
+                      <span className="scan-duration">
+                        {scan.status === 'completed' ? scan.duration : formatDuration(scan.startedAt) || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="scans-cell">
+                      <div className="scan-progress-wrapper">
+                        <div className="scan-progress-bar">
+                          <div className="scan-progress-fill" style={{ width: `${scan.progress}%` }}></div>
+                        </div>
+                        <span className="scan-progress-text">{scan.progress}%</span>
+                      </div>
+                    </div>
+                    <div className="scans-cell">
+                      <div className="scan-actions">
+                        <button onClick={() => handleViewDetails(scan)} className="scan-action-btn scan-action-view" title="View Details">
+                          👁
+                        </button>
+                        {scan.status === 'running' && (
+                          <>
+                            <button onClick={() => handleScanAction(scan.id, 'pause')} className="scan-action-btn scan-action-pause" title="Pause">
+                              ⏸
+                            </button>
+                            <button onClick={() => handleScanAction(scan.id, 'stop')} className="scan-action-btn scan-action-stop" title="Stop">
+                              ⏹
+                            </button>
+                          </>
+                        )}
+                        {scan.status === 'paused' && (
+                          <>
+                            <button onClick={() => handleScanAction(scan.id, 'start')} className="scan-action-btn scan-action-resume" title="Resume">
+                              ▶
+                            </button>
+                            <button onClick={() => handleScanAction(scan.id, 'stop')} className="scan-action-btn scan-action-stop" title="Stop">
+                              ⏹
+                            </button>
+                          </>
+                        )}
+                        {(scan.status === 'completed' || scan.status === 'stopped' || scan.status === 'error') && (
+                          <button onClick={() => handleScanAction(scan.id, 'restart')} className="scan-action-btn scan-action-restart" title="Restart">
+                            🔄
+                          </button>
+                        )}
+                        <button onClick={() => handleScanAction(scan.id, 'delete')} className="scan-action-btn scan-action-delete" title="Delete">
+                          🗑
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
-        </div>
+        </>
       )}
 
       {/* Add Scan Modal */}
       <AddScanModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onSubmit={(scanData) => {
-          console.log('New scan:', scanData);
-          setIsAddModalOpen(false);
-        }}
+        onSubmit={handleCreateScan}
       />
+
+      <style>{`
+        /* ===== SCANS TABLE - LIGHT MODE ===== */
+        .scans-table {
+          background: white;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          border: 1px solid #e5e7eb;
+        }
+
+        .scans-table-header {
+          background: #f9fafb;
+          border-bottom: 2px solid #e5e7eb;
+        }
+
+        .scans-table-row {
+          display: grid;
+          grid-template-columns: 2.5fr 1.5fr 1fr 1fr 1fr 1.2fr 1.2fr;
+          gap: 12px;
+          padding: 14px 20px;
+          border-bottom: 1px solid #e5e7eb;
+          align-items: center;
+        }
+
+        .scans-table-body .scans-table-row:last-child {
+          border-bottom: none;
+        }
+
+        .scans-table-body .scans-table-row:hover {
+          background: #f8fafc;
+        }
+
+        .scans-cell {
+          display: flex;
+          align-items: center;
+          font-size: 14px;
+          color: #374151;
+          min-width: 0;
+        }
+
+        .scans-header-cell {
+          font-weight: 600;
+          color: #374151;
+          font-size: 13px;
+          text-transform: uppercase;
+          letter-spacing: 0.03em;
+        }
+
+        /* Name cell */
+        .scan-name-cell {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+        }
+
+        .scan-name-icon {
+          flex-shrink: 0;
+          color: #6b7280;
+        }
+
+        .scan-name-icon svg {
+          width: 18px;
+          height: 18px;
+        }
+
+        .scan-name-text {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .scan-name-title {
+          font-weight: 500;
+          color: #111827;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .scan-name-cmd {
+          font-size: 11px;
+          color: #9ca3af;
+          font-family: monospace;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          max-width: 300px;
+        }
+
+        /* Target cell */
+        .scan-target-link {
+          color: #059669;
+          font-family: monospace;
+          font-size: 13px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        /* Tool badge */
+        .scan-tool-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 3px 10px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: capitalize;
+        }
+
+        .scan-tool-subfinder {
+          background: #dbeafe;
+          color: #1d4ed8;
+        }
+
+        .scan-tool-dirsearch {
+          background: #fef3c7;
+          color: #b45309;
+        }
+
+        .scan-tool-nuclei {
+          background: #ede9fe;
+          color: #7c3aed;
+        }
+
+        /* Status badge */
+        .scan-status-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          border-radius: 20px;
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.02em;
+        }
+
+        .scan-status-pending { background: #f3f4f6; color: #6b7280; }
+        .scan-status-running { background: #d1fae5; color: #065f46; }
+        .scan-status-completed { background: #dbeafe; color: #1e40af; }
+        .scan-status-paused { background: #fef3c7; color: #92400e; }
+        .scan-status-stopped { background: #f3f4f6; color: #374151; }
+        .scan-status-error { background: #fee2e2; color: #991b1b; }
+
+        /* Duration */
+        .scan-duration {
+          font-size: 13px;
+          color: #374151;
+          font-variant-numeric: tabular-nums;
+        }
+
+        /* Progress */
+        .scan-progress-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+        }
+
+        .scan-progress-bar {
+          flex: 1;
+          height: 6px;
+          background: #e5e7eb;
+          border-radius: 99px;
+          overflow: hidden;
+        }
+
+        .scan-progress-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #3b82f6, #2563eb);
+          border-radius: 99px;
+          transition: width 0.3s;
+        }
+
+        .scan-progress-text {
+          font-size: 12px;
+          font-weight: 600;
+          color: #374151;
+          min-width: 32px;
+          text-align: right;
+        }
+
+        /* Actions */
+        .scan-actions {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .scan-action-btn {
+          width: 30px;
+          height: 30px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1px solid #e5e7eb;
+          border-radius: 6px;
+          background: white;
+          cursor: pointer;
+          font-size: 14px;
+          transition: all 0.15s;
+        }
+
+        .scan-action-btn:hover {
+          background: #f3f4f6;
+          border-color: #d1d5db;
+        }
+
+        .scan-action-view:hover {
+          background: #dbeafe;
+          border-color: #93c5fd;
+        }
+
+        .scan-action-delete:hover {
+          background: #fee2e2;
+          border-color: #fca5a5;
+        }
+
+        /* ===== DARK MODE ===== */
+        .dark .scans-table {
+          background: #1f2937;
+          border-color: #374151;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+
+        .dark .scans-table-header {
+          background: #374151;
+          border-bottom-color: #4b5563;
+        }
+
+        .dark .scans-header-cell {
+          color: #f9fafb;
+        }
+
+        .dark .scans-table-row {
+          border-bottom-color: #374151;
+        }
+
+        .dark .scans-table-body .scans-table-row {
+          background: #1f2937;
+        }
+
+        .dark .scans-table-body .scans-table-row:hover {
+          background: #374151 !important;
+        }
+
+        .dark .scans-cell {
+          color: #e5e7eb;
+        }
+
+        .dark .scan-name-title {
+          color: #f9fafb;
+        }
+
+        .dark .scan-name-cmd {
+          color: #6b7280;
+        }
+
+        .dark .scan-name-icon {
+          color: #9ca3af;
+        }
+
+        .dark .scan-target-link {
+          color: #34d399;
+        }
+
+        .dark .scan-tool-subfinder {
+          background: #1e3a5f;
+          color: #93c5fd;
+        }
+
+        .dark .scan-tool-dirsearch {
+          background: #78350f;
+          color: #fde68a;
+        }
+
+        .dark .scan-tool-nuclei {
+          background: #4c1d95;
+          color: #c4b5fd;
+        }
+
+        .dark .scan-status-pending { background: #374151; color: #d1d5db; }
+        .dark .scan-status-running { background: #065f46; color: #a7f3d0; }
+        .dark .scan-status-completed { background: #1e3a5f; color: #93c5fd; }
+        .dark .scan-status-paused { background: #78350f; color: #fde68a; }
+        .dark .scan-status-stopped { background: #374151; color: #d1d5db; }
+        .dark .scan-status-error { background: #7f1d1d; color: #fca5a5; }
+
+        .dark .scan-duration {
+          color: #d1d5db;
+        }
+
+        .dark .scan-progress-bar {
+          background: #374151;
+        }
+
+        .dark .scan-progress-text {
+          color: #d1d5db;
+        }
+
+        .dark .scan-action-btn {
+          background: #374151;
+          border-color: #4b5563;
+          color: #e5e7eb;
+        }
+
+        .dark .scan-action-btn:hover {
+          background: #4b5563;
+          border-color: #6b7280;
+        }
+
+        .dark .scan-action-view:hover {
+          background: #1e3a5f;
+          border-color: #3b82f6;
+        }
+
+        .dark .scan-action-delete:hover {
+          background: #7f1d1d;
+          border-color: #991b1b;
+        }
+      `}</style>
     </div>
   );
 };

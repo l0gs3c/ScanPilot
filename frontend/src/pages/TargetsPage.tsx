@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from 'react'
+﻿import React, { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { targetAPI, Target, CreateTargetRequest, TargetFilters } from '../services/targetAPI'
-import { Plus, Search, Edit, Trash2, Globe, Shield, Activity } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Globe, Shield, Activity, Zap } from 'lucide-react'
+import ScanConfigModal, { ScanData } from '../components/modals/ScanConfigModal'
+import { useNavigate } from 'react-router-dom'
 
 export default function TargetsPage() {
-  const { user } = useAuth()
+  const { user, token } = useAuth()
+  const navigate = useNavigate()
   const [targets, setTargets] = useState<Target[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -12,6 +16,8 @@ export default function TargetsPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingTarget, setEditingTarget] = useState<Target | null>(null)
+  const [showScanModal, setShowScanModal] = useState(false)
+  const [scanningTarget, setScanningTarget] = useState<Target | null>(null)
   const [total, setTotal] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(20)
@@ -58,6 +64,46 @@ export default function TargetsPage() {
     }
   }
 
+  const handleStartScan = (target: Target) => {
+    setScanningTarget(target)
+    setShowScanModal(true)
+  }
+
+  const handleScanSubmit = async (scanData: ScanData) => {
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/scans/', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(scanData)
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        setShowScanModal(false)
+        setScanningTarget(null)
+        
+        // Show success and ask if user wants to view scan execution
+        const viewScan = confirm(`âœ… Scan created successfully!\n\nScan ID: ${result.scan_id}\n\nDo you want to view the scan execution?`)
+        if (viewScan) {
+          // Navigate to scan execution page with scan_id in state
+          navigate('/scan/execute', { state: { scanId: result.scan_id } })
+        } else {
+          // Refresh targets to see updated scan counts
+          await fetchTargets()
+        }
+      } else {
+        const error = await response.json()
+        alert(`âŒ Error creating scan: ${error.detail || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error creating scan:', error)
+      alert('âŒ Failed to create scan')
+    }
+  }
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'scanning':
@@ -95,7 +141,7 @@ export default function TargetsPage() {
     <div className="targets-page">
       <div className="page-header">
         <div></div>
-        <h1 className="page-title">🎯 Targets Management</h1>
+        <h1 className="page-title">ðŸŽ¯ Targets Management</h1>
         <p className="page-description">Manage your scan targets and monitor their status</p>
       </div>
 
@@ -103,7 +149,7 @@ export default function TargetsPage() {
       <div className="controls-section">
         <div className="search-filters">
           <div className="search-input">
-            <Search className="w-4 h-4 text-gray-400" />
+            <Search className="w-4 h-4 search-icon" />
             <input
               type="text"
               placeholder="Search targets..."
@@ -134,9 +180,9 @@ export default function TargetsPage() {
 
       {error && (
         <div className="error-message">
-          ❌ {error}
+          âŒ {error}
           <button onClick={fetchTargets} className="retry-button">
-            🔄 Retry
+            ðŸ”„ Retry
           </button>
         </div>
       )}
@@ -147,7 +193,6 @@ export default function TargetsPage() {
           <div className="table-row">
             <div className="table-cell header-cell">Name</div>
             <div className="table-cell header-cell">Target</div>
-            <div className="table-cell header-cell">Type</div>
             <div className="table-cell header-cell">Status</div>
             <div className="table-cell header-cell">Scans</div>
             <div className="table-cell header-cell">Actions</div>
@@ -168,25 +213,10 @@ export default function TargetsPage() {
               
               <div className="table-cell">
                 <div className="target-url">
-                  {target.isWildcard ? (
-                    <span className="wildcard-pattern">
-                      🌐 {target.wildcardPattern}
-                    </span>
-                  ) : (
-                    <span className="domain-url">
-                      🔗 {target.targetUrl}
-                      {target.port && target.port !== '80' && target.port !== '443' && (
-                        <span className="port">:{target.port}</span>
-                      )}
-                    </span>
-                  )}
+                  <span className="domain-url" title={target.targetUrl || target.domain || 'N/A'}>
+                    ðŸ”— {target.targetUrl || target.domain || 'N/A'}
+                  </span>
                 </div>
-              </div>
-
-              <div className="table-cell">
-                <span className={`target-type ${target.isWildcard ? 'wildcard' : 'specific'}`}>
-                  {target.isWildcard ? '🌐 Wildcard' : '🎯 Specific'}
-                </span>
               </div>
 
               <div className="table-cell">
@@ -199,16 +229,23 @@ export default function TargetsPage() {
               <div className="table-cell">
                 <div className="scan-counts">
                   <span className="active-scans">
-                    ▶️ {target.activeScans} active
+                    â–¶ï¸ {target.activeScans} active
                   </span>
                   <span className="completed-scans">
-                    ✅ {target.completedScans} completed
+                    âœ… {target.completedScans} completed
                   </span>
                 </div>
               </div>
 
               <div className="table-cell">
                 <div className="action-buttons">
+                  <button
+                    onClick={() => handleStartScan(target)}
+                    className="scan-button"
+                    title="Start new scan"
+                  >
+                    <Zap className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => setEditingTarget(target)}
                     className="edit-button"
@@ -238,7 +275,7 @@ export default function TargetsPage() {
             onClick={() => setCurrentPage(currentPage - 1)}
             className="page-button"
           >
-            ← Previous
+            â† Previous
           </button>
           
           <span className="page-info">
@@ -251,7 +288,7 @@ export default function TargetsPage() {
             onClick={() => setCurrentPage(currentPage + 1)}
             className="page-button"
           >
-            Next →
+            Next â†’
           </button>
         </div>
       )}
@@ -269,6 +306,19 @@ export default function TargetsPage() {
             setEditingTarget(null)
             fetchTargets()
           }}
+        />
+      )}
+
+      {/* Scan Configuration Modal */}
+      {showScanModal && scanningTarget && (
+        <ScanConfigModal
+          isOpen={showScanModal}
+          onClose={() => {
+            setShowScanModal(false)
+            setScanningTarget(null)
+          }}
+          onSubmit={handleScanSubmit}
+          preSelectedTargetId={scanningTarget.id}
         />
       )}
 
@@ -314,10 +364,11 @@ export default function TargetsPage() {
           align-items: center;
         }
 
-        .search-input svg {
+        .search-icon {
           position: absolute;
           left: 12px;
           z-index: 1;
+          color: #9ca3af;
         }
 
         .search-field {
@@ -326,6 +377,13 @@ export default function TargetsPage() {
           border-radius: 8px;
           font-size: 14px;
           width: 250px;
+          background: white;
+          color: #111827;
+        }
+
+        .search-field:focus {
+          outline: none;
+          border-color: #3b82f6;
         }
 
         .status-filter {
@@ -334,6 +392,13 @@ export default function TargetsPage() {
           border-radius: 8px;
           font-size: 14px;
           background: white;
+          color: #111827;
+          cursor: pointer;
+        }
+
+        .status-filter:focus {
+          outline: none;
+          border-color: #3b82f6;
         }
 
         .create-button {
@@ -381,10 +446,11 @@ export default function TargetsPage() {
           border-radius: 12px;
           overflow: hidden;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          border: 1px solid #e5e7eb;
         }
 
         .table-header {
-          background: #f8fafc;
+          background: #f9fafb;
           border-bottom: 2px solid #e5e7eb;
         }
 
@@ -415,6 +481,10 @@ export default function TargetsPage() {
         .target-name {
           font-weight: 500;
           color: #111827;
+          max-width: 250px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .target-description {
@@ -426,6 +496,17 @@ export default function TargetsPage() {
         .target-url {
           font-family: monospace;
           font-size: 13px;
+          max-width: 300px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .target-url span {
+          display: inline-block;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .wildcard-pattern {
@@ -489,7 +570,7 @@ export default function TargetsPage() {
           gap: 8px;
         }
 
-        .edit-button, .delete-button {
+        .scan-button, .edit-button, .delete-button {
           padding: 6px;
           border: 1px solid #d1d5db;
           border-radius: 6px;
@@ -498,6 +579,33 @@ export default function TargetsPage() {
           display: flex;
           align-items: center;
           justify-content: center;
+          transition: all 0.2s;
+        }
+
+        .scan-button {
+          color: #3b82f6;
+        }
+
+        .scan-button svg {
+          color: #3b82f6;
+        }
+
+        .edit-button svg {
+          color: #6b7280;
+        }
+
+        .delete-button svg {
+          color: #6b7280;
+        }
+
+        .scan-button:hover {
+          background: #dbeafe;
+          border-color: #60a5fa;
+          color: #2563eb;
+        }
+
+        .scan-button:hover svg {
+          color: #2563eb;
         }
 
         .edit-button:hover {
@@ -568,6 +676,182 @@ export default function TargetsPage() {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
+
+        /* Dark Mode Styles */
+        .dark .targets-page {
+          background: var(--bg-secondary);
+        }
+
+        .dark .page-title {
+          color: var(--text-primary);
+        }
+
+        .dark .page-description {
+          color: var(--text-secondary);
+        }
+
+        .dark .search-icon {
+          color: var(--text-tertiary);
+        }
+
+        .dark .search-field,
+        .dark .status-filter {
+          background: var(--bg-tertiary) !important;
+          border-color: var(--border-color) !important;
+          color: var(--text-primary) !important;
+        }
+
+        .dark .status-filter option {
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
+        }
+
+        .dark .search-field::placeholder {
+          color: var(--text-tertiary);
+        }
+
+        .dark .create-button {
+          background: var(--accent-color);
+        }
+
+        .dark .create-button:hover {
+          background: var(--accent-hover);
+        }
+
+        .dark .targets-table {
+          background: var(--bg-primary) !important;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+          border-color: var(--border-color);
+        }
+
+        .dark .table-header {
+          background: var(--bg-tertiary) !important;
+          border-bottom-color: var(--border-color);
+        }
+
+        .dark .header-cell {
+          color: var(--text-primary);
+        }
+
+        .dark .table-row {
+          background: var(--bg-primary);
+          border-bottom-color: var(--border-color);
+        }
+
+        .dark .table-row:hover {
+          background: var(--bg-tertiary) !important;
+        }
+
+        .dark .target-name {
+          color: var(--text-primary);
+        }
+
+        .dark .target-description {
+          color: var(--text-secondary);
+        }
+
+        .dark .wildcard-pattern {
+          color: #a78bfa;
+        }
+
+        .dark .domain-url {
+          color: #34d399;
+        }
+
+        .dark .port {
+          color: #fbbf24;
+        }
+
+        .dark .target-type.wildcard {
+          background: #4c1d95;
+          color: #c4b5fd;
+        }
+
+        .dark .target-type.specific {
+          background: #065f46;
+          color: #a7f3d0;
+        }
+
+        .dark .scan-button,
+        .dark .edit-button,
+        .dark .delete-button,
+        .dark .page-button {
+          background: var(--bg-tertiary);
+          border-color: var(--border-color);
+          color: var(--text-primary);
+        }
+
+        .dark .scan-button {
+          color: #60a5fa;
+        }
+
+        .dark .scan-button svg {
+          color: #60a5fa;
+        }
+
+        .dark .edit-button svg {
+          color: #9ca3af;
+        }
+
+        .dark .delete-button svg {
+          color: #fca5a5;
+        }
+
+        .dark .scan-button:hover {
+          background: #1e3a5f;
+          border-color: #3b82f6;
+          color: #93c5fd;
+        }
+
+        .dark .scan-button:hover svg {
+          color: #93c5fd;
+        }
+
+        .dark .edit-button:hover {
+          background: #4b5563;
+          border-color: #6b7280;
+        }
+
+        .dark .edit-button:hover svg {
+          color: #d1d5db;
+        }
+
+        .dark .delete-button:hover {
+          background: #7f1d1d;
+          border-color: #991b1b;
+          color: #fecaca;
+        }
+
+        .dark .delete-button:hover svg {
+          color: #fecaca;
+        }
+
+        .dark .page-info {
+          color: var(--text-secondary);
+        }
+
+        .dark .loading-spinner {
+          color: var(--text-secondary);
+        }
+
+        .dark .spinner {
+          border-color: var(--border-color);
+          border-top-color: var(--accent-color);
+        }
+
+        .dark .error-message {
+          background: var(--error-bg);
+          color: var(--error-text);
+          border-color: #991b1b;
+        }
+
+        .dark .retry-button {
+          background: #991b1b;
+        }
+
+        .dark .retry-button:hover {
+          background: #7f1d1d;
+        }
       `}</style>
     </div>
   )
@@ -581,13 +865,13 @@ interface TargetModalProps {
 }
 
 function TargetModal({ target, onClose, onSave }: TargetModalProps) {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const [formData, setFormData] = useState<CreateTargetRequest>({
     name: target?.name || '',
     domain: target?.domain || '',
     port: target?.port || '',
-    wildcardPattern: target?.wildcardPattern || '',
     description: target?.description || '',
-    isWildcard: target?.isWildcard || false,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -604,9 +888,11 @@ function TargetModal({ target, onClose, onSave }: TargetModalProps) {
         await targetAPI.createTarget(formData)
       }
       onSave()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save target:', err)
-      setError('Failed to save target')
+      // Extract specific error message from API response
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to save target'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -614,21 +900,42 @@ function TargetModal({ target, onClose, onSave }: TargetModalProps) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>{target ? 'Edit Target' : 'Create New Target'}</h2>
-          <button onClick={onClose} className="close-button">✕</button>
+      <div 
+        className="modal-content" 
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: isDark ? '#1f2937' : '#ffffff',
+          color: isDark ? '#f9fafb' : '#111827'
+        }}
+      >
+        <div className="modal-header" style={{
+          borderBottomColor: isDark ? '#374151' : '#e5e7eb'
+        }}>
+          <h2 style={{ color: isDark ? '#f9fafb' : '#111827' }}>
+            {target ? 'Edit Target' : 'Create New Target'}
+          </h2>
+          <button 
+            onClick={onClose} 
+            className="close-button"
+            style={{ color: isDark ? '#9ca3af' : '#6b7280' }}
+          >âœ•</button>
         </div>
 
         {error && (
-          <div className="error-message">
-            ❌ {error}
+          <div className="error-message" style={{
+            background: isDark ? '#7f1d1d' : '#fee2e2',
+            color: isDark ? '#fecaca' : '#dc2626',
+            borderColor: isDark ? '#991b1b' : '#fecaca'
+          }}>
+            âŒ {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="target-form">
           <div className="form-group">
-            <label htmlFor="name">Target Name *</label>
+            <label htmlFor="name" style={{ color: isDark ? '#f9fafb' : '#374151' }}>
+              Target Name *
+            </label>
             <input
               id="name"
               type="text"
@@ -637,65 +944,57 @@ function TargetModal({ target, onClose, onSave }: TargetModalProps) {
               placeholder="e.g., Production API Server"
               required
               disabled={loading}
+              style={{
+                background: isDark ? '#374151' : '#ffffff',
+                borderColor: isDark ? '#4b5563' : '#e5e7eb',
+                color: isDark ? '#f9fafb' : '#111827'
+              }}
             />
           </div>
 
           <div className="form-group">
-            <label>
-              <input
-                type="checkbox"
-                checked={formData.isWildcard}
-                onChange={(e) => setFormData({...formData, isWildcard: e.target.checked})}
-                disabled={loading}
-              />
-              Wildcard Target (for subdomain discovery)
+            <label htmlFor="domain" style={{ color: isDark ? '#f9fafb' : '#374151' }}>
+              Domain/IP Address *
             </label>
+            <input
+              id="domain"
+              type="text"
+              value={formData.domain}
+              onChange={(e) => setFormData({...formData, domain: e.target.value})}
+              placeholder="e.g., api.example.com or 192.168.1.1"
+              required
+              disabled={loading}
+              style={{
+                background: isDark ? '#374151' : '#ffffff',
+                borderColor: isDark ? '#4b5563' : '#e5e7eb',
+                color: isDark ? '#f9fafb' : '#111827'
+              }}
+            />
           </div>
 
-          {formData.isWildcard ? (
-            <div className="form-group">
-              <label htmlFor="wildcardPattern">Wildcard Pattern *</label>
-              <input
-                id="wildcardPattern"
-                type="text"
-                value={formData.wildcardPattern}
-                onChange={(e) => setFormData({...formData, wildcardPattern: e.target.value})}
-                placeholder="e.g., *.example.com"
-                required
-                disabled={loading}
-              />
-            </div>
-          ) : (
-            <>
-              <div className="form-group">
-                <label htmlFor="domain">Domain/IP Address *</label>
-                <input
-                  id="domain"
-                  type="text"
-                  value={formData.domain}
-                  onChange={(e) => setFormData({...formData, domain: e.target.value})}
-                  placeholder="e.g., api.example.com or 192.168.1.1"
-                  required
-                  disabled={loading}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="port">Port</label>
-                <input
-                  id="port"
-                  type="text"
-                  value={formData.port}
-                  onChange={(e) => setFormData({...formData, port: e.target.value})}
-                  placeholder="e.g., 443, 80, 8080"
-                  disabled={loading}
-                />
-              </div>
-            </>
-          )}
+          <div className="form-group">
+            <label htmlFor="port" style={{ color: isDark ? '#f9fafb' : '#374151' }}>
+              Port
+            </label>
+            <input
+              id="port"
+              type="text"
+              value={formData.port}
+              onChange={(e) => setFormData({...formData, port: e.target.value})}
+              placeholder="e.g., 443, 80, 8080"
+              disabled={loading}
+              style={{
+                background: isDark ? '#374151' : '#ffffff',
+                borderColor: isDark ? '#4b5563' : '#e5e7eb',
+                color: isDark ? '#f9fafb' : '#111827'
+              }}
+            />
+          </div>
 
           <div className="form-group">
-            <label htmlFor="description">Description</label>
+            <label htmlFor="description" style={{ color: isDark ? '#f9fafb' : '#374151' }}>
+              Description
+            </label>
             <textarea
               id="description"
               value={formData.description}
@@ -703,6 +1002,11 @@ function TargetModal({ target, onClose, onSave }: TargetModalProps) {
               placeholder="Optional description of this target"
               rows={3}
               disabled={loading}
+              style={{
+                background: isDark ? '#374151' : '#ffffff',
+                borderColor: isDark ? '#4b5563' : '#e5e7eb',
+                color: isDark ? '#f9fafb' : '#111827'
+              }}
             />
           </div>
 
@@ -712,6 +1016,11 @@ function TargetModal({ target, onClose, onSave }: TargetModalProps) {
               onClick={onClose}
               className="cancel-button"
               disabled={loading}
+              style={{
+                background: isDark ? '#374151' : '#ffffff',
+                color: isDark ? '#f9fafb' : '#374151',
+                borderColor: isDark ? '#4b5563' : '#d1d5db'
+              }}
             >
               Cancel
             </button>
@@ -719,8 +1028,12 @@ function TargetModal({ target, onClose, onSave }: TargetModalProps) {
               type="submit"
               className={`save-button ${loading ? 'loading' : ''}`}
               disabled={loading}
+              style={{
+                background: isDark ? '#1e40af' : '#3b82f6',
+                color: '#ffffff'
+              }}
             >
-              {loading ? '⏳ Saving...' : '💾 Save Target'}
+              {loading ? 'â³ Saving...' : 'ðŸ’¾ Save Target'}
             </button>
           </div>
         </form>
@@ -740,7 +1053,7 @@ function TargetModal({ target, onClose, onSave }: TargetModalProps) {
           }
 
           .modal-content {
-            background: white;
+            background: #ffffff;
             border-radius: 12px;
             padding: 0;
             width: 90%;
@@ -855,6 +1168,86 @@ function TargetModal({ target, onClose, onSave }: TargetModalProps) {
           .save-button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+          }
+
+          .error-message {
+            background: var(--error-bg);
+            color: var(--error-text);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 0 20px;
+            margin-bottom: 10px;
+            border: 1px solid #fca5a5;
+          }
+
+          /* Dark Mode for Modal */
+          .dark .modal-overlay {
+            background: rgba(0, 0, 0, 0.7);
+          }
+
+          .dark .modal-content {
+            background: #1f2937 !important;
+          }
+
+          .dark .modal-header {
+            border-bottom-color: var(--border-color);
+          }
+
+          .dark .modal-header h2 {
+            color: var(--text-primary);
+          }
+
+          .dark .close-button {
+            color: var(--text-secondary);
+          }
+
+          .dark .close-button:hover {
+            color: var(--text-primary);
+          }
+
+          .dark .form-group label {
+            color: var(--text-primary);
+          }
+
+          .dark .form-group input[type="text"],
+          .dark .form-group textarea {
+            background: var(--bg-tertiary);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+          }
+
+          .dark .form-group input[type="text"]::placeholder,
+          .dark .form-group textarea::placeholder {
+            color: var(--text-tertiary);
+          }
+
+          .dark .form-group input[type="text"]:focus,
+          .dark .form-group textarea:focus {
+            border-color: var(--accent-color);
+          }
+
+          .dark .cancel-button {
+            background: var(--bg-tertiary);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+          }
+
+          .dark .cancel-button:hover {
+            background: #4b5563;
+          }
+
+          .dark .save-button {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+          }
+
+          .dark .save-button:hover:not(:disabled) {
+            background: var(--accent-hover);
+          }
+
+          .dark .error-message {
+            background: var(--error-bg);
+            color: var(--error-text);
           }
         `}</style>
       </div>

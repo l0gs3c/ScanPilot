@@ -9,34 +9,51 @@ import jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from passlib.hash import bcrypt
+from app.core.config import settings
 
-# Security configuration
-SECRET_KEY = "your-secret-key-change-this-in-production"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours
+# Import routers
+from app.api.v1 import scans, websocket as ws_router, targets
+
+# Security configuration from settings
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 app = FastAPI(
-    title="ScanPilot Demo",
-    version="1.0.0",
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
     description="ScanPilot - Security Scanning Management Platform (Demo Version with Auth)",
 )
 
-# CORS middleware
+# CORS middleware from settings
+print("🌐 Configuring CORS...")
+cors_origins = settings.get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",  # Vite dev server
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request, call_next):
+    """Log all incoming requests"""
+    if settings.DEBUG:
+        print(f"\n➡️  {request.method} {request.url}")
+        print(f"   Headers: {dict(request.headers)}")
+        print(f"   Client: {request.client}")
+    
+    response = await call_next(request)
+    
+    if settings.DEBUG:
+        print(f"⬅️  Response: {response.status_code}")
+    
+    return response
 
 # Pydantic models for authentication
 class UserLogin(BaseModel):
@@ -62,7 +79,7 @@ mock_users = {
         "user_id": 1,
         "username": "admin",
         "email": "admin@scanpilot.local",
-        "hashed_password": pwd_context.hash("admin"),  # password: admin
+        "hashed_password": pwd_context.hash("admin123"),  # password: admin123
         "is_active": True,
         "is_admin": True,
     },
@@ -70,7 +87,7 @@ mock_users = {
         "user_id": 2, 
         "username": "test",
         "email": "test@scanpilot.local",
-        "hashed_password": pwd_context.hash("test"),  # password: test
+        "hashed_password": pwd_context.hash("test123"),  # password: test123
         "is_active": True,
         "is_admin": False,
     }
@@ -207,13 +224,17 @@ async def health_check():
 @app.post("/api/v1/auth/login", response_model=Token)
 async def login(user_credentials: UserLogin):
     """Authenticate user and return JWT token"""
+    print(f"🔑 Login attempt for user: {user_credentials.username}")
+    
     user = authenticate_user(user_credentials.username, user_credentials.password)
     if not user:
+        print(f"❌ Login failed for user: {user_credentials.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
     access_token_expires = datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={
@@ -223,6 +244,9 @@ async def login(user_credentials: UserLogin):
         }, 
         expires_delta=access_token_expires
     )
+    
+    print(f"✅ Login successful for user: {user['username']}")
+    
     return {
         "access_token": access_token,
         "token_type": "bearer",
@@ -246,35 +270,36 @@ async def read_users_me(current_user: dict = Depends(get_current_user)):
         "is_active": current_user["is_active"]
     }
 
-@app.get("/api/v1/targets")
-async def get_targets(current_user: dict = Depends(get_current_user)):
-    """Get list of targets (protected endpoint)"""
-    return {"targets": mock_targets, "total": len(mock_targets)}
+# Mock targets endpoints now handled by proper router in app.api.v1.targets
+# @app.get("/api/v1/targets")
+# async def get_targets(current_user: dict = Depends(get_current_user)):
+#     """Get list of targets (protected endpoint)"""
+#     return {"targets": mock_targets, "total": len(mock_targets)}
 
-@app.get("/api/v1/targets/{target_id}")
-async def get_target(target_id: str, current_user: dict = Depends(get_current_user)):
-    """Get specific target (protected endpoint)"""
-    target = next((t for t in mock_targets if t["id"] == target_id), None)
-    if not target:
-        raise HTTPException(status_code=404, detail="Target not found")
-    return target
+# @app.get("/api/v1/targets/{target_id}")
+# async def get_target(target_id: str, current_user: dict = Depends(get_current_user)):
+#     """Get specific target (protected endpoint)"""
+#     target = next((t for t in mock_targets if t["id"] == target_id), None)
+#     if not target:
+#         raise HTTPException(status_code=404, detail="Target not found")
+#     return target
 
-@app.post("/api/v1/targets")
-async def create_target(target: Dict[str, Any], current_user: dict = Depends(get_current_user)):
-    """Create new target (protected endpoint)"""
-    new_target = {
-        "id": str(uuid.uuid4()),
-        "name": target.get("name"),
-        "host": target.get("host"),
-        "port": target.get("port", 80),
-        "protocol": target.get("protocol", "http"),
-        "status": "not_started",
-        "created_at": datetime.datetime.now().isoformat() + "Z",
-        "updated_at": datetime.datetime.now().isoformat() + "Z",
-        "created_by": current_user["username"]
-    }
-    mock_targets.append(new_target)
-    return new_target
+# @app.post("/api/v1/targets")
+# async def create_target(target: Dict[str, Any], current_user: dict = Depends(get_current_user)):
+#     """Create new target (protected endpoint)"""
+#     new_target = {
+#         "id": str(uuid.uuid4()),
+#         "name": target.get("name"),
+#         "host": target.get("host"),
+#         "port": target.get("port", 80),
+#         "protocol": target.get("protocol", "http"),
+#         "status": "not_started",
+#         "created_at": datetime.datetime.now().isoformat() + "Z",
+#         "updated_at": datetime.datetime.now().isoformat() + "Z",
+#         "created_by": current_user["username"]
+#     }
+#     mock_targets.append(new_target)
+#     return new_target
 
 @app.get("/api/v1/scans")
 async def get_scans(current_user: dict = Depends(get_current_user)):
@@ -306,14 +331,40 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         "user": current_user["username"]
     }
 
+# Mount routers
+app.include_router(targets.router, prefix="/api/v1/targets", tags=["targets"])
+app.include_router(scans.router, prefix="/api/v1/scans", tags=["scans"])
+app.include_router(ws_router.router, prefix="/ws", tags=["websocket"])
+print("📡 Mounted routers: /api/v1/targets, /api/v1/scans, /ws")
+
 if __name__ == "__main__":
     import uvicorn
-    print("🚀 Starting ScanPilot Demo Backend...")
-    print("📖 API Documentation: http://localhost:8000/docs")
-    print("🔗 API Base URL: http://localhost:8000")
+    import os
+    import sys
+    from pathlib import Path
+    
+    # IMPORTANT: Change working directory to project root
+    # This is required for relative paths (storage/targets/...) to work
+    current_dir = Path(__file__).resolve().parent
+    project_root = current_dir.parent  # Go up from backend/ to project root
+    
+    # Add project root to Python path so 'backend' module can be imported
+    sys.path.insert(0, str(project_root))
+    
+    # Change working directory to project root
+    os.chdir(project_root)
+    
+    print("🚀 Starting ScanPilot Backend...")
+    print(f"📁 Working Directory: {os.getcwd()}")
+    print(f"🐍 Python Path: {sys.path[0]}")
+    print(f"📖 API Documentation: http://{settings.SERVER_HOST}:{settings.SERVER_PORT}/docs")
+    print(f"🔗 API Base URL: http://{settings.SERVER_HOST}:{settings.SERVER_PORT}")
+    print(f"🌍 Environment: {settings.ENVIRONMENT}")
+    print(f"🔐 Debug Mode: {settings.DEBUG}")
+    
     uvicorn.run(
-        "main:app",
-        host="0.0.0.0", 
-        port=8000,
-        reload=True
+        "backend.main:app",  # Module path since we're in project root
+        host=settings.SERVER_HOST,
+        port=settings.SERVER_PORT,
+        reload=settings.DEBUG or settings.ENVIRONMENT == "development"
     )

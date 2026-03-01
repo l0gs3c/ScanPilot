@@ -1,0 +1,41 @@
+[
+  {
+    "id": 1,
+    "name": "adman",
+    "domain": "testphp.vulnweb.com",
+    "port": "89",
+    "description": "aaa",
+    "status": "scanning",
+    "activeScans": 1,
+    "completedScans": 0,
+    "createdAt": "2026-02-26T01:57:41.214385",
+    "updatedAt": "2026-03-01T00:14:23.597717",
+    "folderName": "testphp.vulnweb.com_89"
+  },
+  {
+    "id": 2,
+    "name": "abc",
+    "domain": "atestphp.vulnweb.com",
+    "port": "80",
+    "description": "xxxx",
+    "status": "scanning",
+    "activeScans": 1,
+    "completedScans": 0,
+    "createdAt": "2026-02-26T01:59:16.720976",
+    "updatedAt": "2026-03-01T01:00:04.180251",
+    "folderName": "atestphp.vulnweb.com_80"
+  },
+  {
+    "id": 3,
+    "name": "adman",
+    "domain": "testphp.vulnweb.com",
+    "port": "80",
+    "description": "",
+    "status": "scanning",
+    "activeScans": 4,
+    "completedScans": 0,
+    "createdAt": "2026-02-26T02:04:07.731189",
+    "updatedAt": "2026-03-02T02:18:28.251214",
+    "folderName": "testphp.vulnweb.com_80"
+  }
+]

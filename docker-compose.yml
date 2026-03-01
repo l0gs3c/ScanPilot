@@ -39,7 +39,7 @@ services:
       - TOOLS_PATH=/app/tools
     volumes:
       - ./tools:/app/tools:ro
-      - ./backend/storage:/app/storage
+      - ./storage:/app/storage
       - ./backend/logs:/app/logs
     ports:
       - "8000:8000"
@@ -63,7 +63,7 @@ services:
       - TOOLS_PATH=/app/tools
     volumes:
       - ./tools:/app/tools:ro
-      - ./backend/storage:/app/storage
+      - ./storage:/app/storage
       - ./backend/logs:/app/logs
     depends_on:
       - postgres
@@ -83,7 +83,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-this}
     volumes:
-      - ./backend/storage:/app/storage
+      - ./storage:/app/storage
     depends_on:
       - postgres
       - redis

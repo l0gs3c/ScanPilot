@@ -20,7 +20,7 @@ start "ScanPilot Frontend" cmd /k "npm run dev"
 
 echo.
 echo Both servers are starting...
-echo Backend: http://localhost:8002
+echo Backend: http://localhost:8000
 echo Frontend: http://localhost:3000
 echo.
 pause

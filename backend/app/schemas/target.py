@@ -4,12 +4,9 @@ from datetime import datetime
 
 class TargetBase(BaseModel):
     name: str
-    domain: Optional[str] = None
+    domain: str
     port: Optional[str] = None
-    wildcard_pattern: Optional[str] = None
-    parent_wildcard: Optional[str] = None
     description: Optional[str] = None
-    is_wildcard: bool = False
 
 class TargetCreate(TargetBase):
     @validator('name')
@@ -19,16 +16,10 @@ class TargetCreate(TargetBase):
         return v.strip()
     
     @validator('domain')
-    def domain_required_for_non_wildcard(cls, v, values):
-        if not values.get('is_wildcard', False) and not v:
-            raise ValueError('Domain is required for non-wildcard targets')
-        return v
-    
-    @validator('wildcard_pattern')
-    def wildcard_pattern_required_for_wildcard(cls, v, values):
-        if values.get('is_wildcard', False) and not v:
-            raise ValueError('Wildcard pattern is required for wildcard targets')
-        return v
+    def domain_required(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Domain is required')
+        return v.strip()
     
     @validator('port')
     def validate_port(cls, v):
@@ -48,18 +39,16 @@ class TargetUpdate(BaseModel):
     name: Optional[str] = None
     domain: Optional[str] = None
     port: Optional[str] = None
-    wildcard_pattern: Optional[str] = None
-    parent_wildcard: Optional[str] = None
     description: Optional[str] = None
     status: Optional[str] = None
 
 class TargetInDBBase(TargetBase):
     id: int
     status: str
-    active_scans: int
-    completed_scans: int
-    created_at: datetime
-    updated_at: Optional[datetime] = None
+    activeScans: int
+    completedScans: int
+    createdAt: str
+    updatedAt: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -74,19 +63,16 @@ class TargetInDB(TargetInDBBase):
 class TargetResponse(BaseModel):
     id: int
     name: str
-    domain: Optional[str] = None
+    domain: str
     port: Optional[str] = None
-    wildcardPattern: Optional[str] = None
-    parentWildcard: Optional[str] = None
     description: Optional[str] = None
-    isWildcard: bool
     status: str
     activeScans: int
     completedScans: int
-    createdAt: datetime
-    updatedAt: Optional[datetime] = None
+    createdAt: str
+    updatedAt: Optional[str] = None
     targetUrl: Optional[str] = None
-    childrenCount: Optional[int] = 0  # Number of sub-targets for wildcard targets
+    folderName: Optional[str] = None
     
     class Config:
         from_attributes = True
